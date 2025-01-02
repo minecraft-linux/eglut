@@ -33,6 +33,7 @@
 #include <unistd.h>
 #include <string.h>
 #include <malloc.h>
+#include <limits.h>
 #include <X11/extensions/XInput2.h>
 
 #include "eglutint.h"
@@ -161,6 +162,21 @@ _eglutNativeInitWindow(struct eglut_window *win, const char *title,
     Atom cardinal = XInternAtom(_eglut->native_dpy, "CARDINAL", False);
     pid_t pid = getpid();
     XChangeProperty(_eglut->native_dpy, xwin, wm_pid, cardinal, 32, PropModeReplace, (void*) &pid, sizeof(pid));
+
+    const unsigned char myVersion = 5;
+    Atom XdndAware = XInternAtom(_eglut->native_dpy, "XdndAware", False);
+    XChangeProperty(_eglut->native_dpy, xwin, XdndAware, 4, 32, PropModeReplace, &myVersion, 1);
+
+    _eglut->XdndTypeList = XInternAtom(_eglut->native_dpy, "XdndTypeList", False);
+    _eglut->XdndSelection = XInternAtom(_eglut->native_dpy, "XdndSelection", False);
+    _eglut->XdndEnter = XInternAtom(_eglut->native_dpy, "XdndEnter", False);
+    _eglut->XdndPosition = XInternAtom(_eglut->native_dpy, "XdndPosition", False);
+    _eglut->XdndStatus = XInternAtom(_eglut->native_dpy, "XdndStatus", False);
+    _eglut->XdndLeave = XInternAtom(_eglut->native_dpy, "XdndLeave", False);
+    _eglut->XdndDrop = XInternAtom(_eglut->native_dpy, "XdndDrop", False);
+    _eglut->XdndFinished = XInternAtom(_eglut->native_dpy, "XdndFinished", False);
+    _eglut->XdndActionCopy = XInternAtom(_eglut->native_dpy, "XdndActionCopy", False);
+    _eglut->XtextUriList = XInternAtom(_eglut->native_dpy, "text/uri-list", False);
 }
 
 void eglutSetWindowIcon(const char *path)
@@ -484,6 +500,118 @@ next_event(struct eglut_window *win)
                     eglutFini();
                 }
             }
+            if (event.xclient.message_type == _eglut->XdndEnter) {
+                unsigned long count;
+                Atom* formats;
+                Atom real_formats[6];
+
+                Bool list = event.xclient.data.l[1] & 1;
+
+                _eglut->dnd_source = event.xclient.data.l[0];
+                _eglut->dnd_version = event.xclient.data.l[1] >> 24;
+                _eglut->dnd_format = None;
+
+                if (_eglut->dnd_version > 5)
+                    break;
+
+                if (list) {
+                    Atom actualType;
+                    int32_t actualFormat;
+                    unsigned long bytesAfter;
+
+                    XGetWindowProperty(_eglut->native_dpy,
+                        _eglut->dnd_source,
+                        _eglut->XdndTypeList,
+                        0,
+                        LONG_MAX,
+                        False,
+                        4,
+                        &actualType,
+                        &actualFormat,
+                        &count,
+                        &bytesAfter,
+                        (unsigned char**) &formats);
+                } else {
+                    count = 0;
+
+                    if (event.xclient.data.l[2] != None)
+                        real_formats[count++] = event.xclient.data.l[2];
+                    if (event.xclient.data.l[3] != None)
+                        real_formats[count++] = event.xclient.data.l[3];
+                    if (event.xclient.data.l[4] != None)
+                        real_formats[count++] = event.xclient.data.l[4];
+                    
+                    formats = real_formats;
+                }
+
+                unsigned long i;
+                for (i = 0; i < count; i++) {
+                    if (formats[i] == _eglut->XtextUriList) {
+                        _eglut->dnd_format = formats[i];
+                        break;
+                    }
+                }
+                
+                if (list) {
+                    XFree(formats);
+                }
+
+                break;
+            }
+            if (event.xclient.message_type == _eglut->XdndPosition) {
+                XEvent reply = { ClientMessage };
+                reply.xclient.window = _eglut->dnd_source;
+                reply.xclient.format = 32;
+                reply.xclient.data.l[0] = (long) _eglut->current->native.u.window;
+                reply.xclient.data.l[2] = 0;
+                reply.xclient.data.l[3] = 0;
+
+                const int32_t xabs = (event.xclient.data.l[2] >> 16) & 0xffff;
+                const int32_t yabs = (event.xclient.data.l[2]) & 0xffff;
+
+                if (_eglut->dnd_version > 5)
+                    break;
+                
+                reply.xclient.message_type = _eglut->XdndStatus;
+
+                if (_eglut->dnd_format) {
+                    reply.xclient.data.l[1] = 1;
+                    if (_eglut->dnd_version >= 2)
+                        reply.xclient.data.l[4] = _eglut->XdndActionCopy;
+                }
+
+                XSendEvent(_eglut->native_dpy, _eglut->dnd_source, False, NoEventMask, &reply);
+                XFlush(_eglut->native_dpy);
+                break;
+            }
+
+            if (event.xclient.message_type == _eglut->XdndDrop && _eglut->dnd_version <= 5) {
+                if (_eglut->dnd_format) {
+                    Time time = CurrentTime;
+
+                    if (_eglut->dnd_version >= 1)
+                        time = event.xclient.data.l[2];
+
+                    XConvertSelection(_eglut->native_dpy,
+                        _eglut->XdndSelection,
+                        _eglut->dnd_format,
+                        _eglut->XdndSelection,
+                        _eglut->current->native.u.window,
+                        time);
+                } else if (_eglut->dnd_version >= 2) {
+                    XEvent reply = { ClientMessage };
+                    reply.xclient.window = _eglut->dnd_source;
+                    reply.xclient.format = 32;
+                    reply.xclient.data.l[0] = (long) _eglut->current->native.u.window;
+                    reply.xclient.data.l[2] = 0;
+                    reply.xclient.data.l[3] = 0;
+                    reply.xclient.message_type = _eglut->XdndFinished;
+
+                    XSendEvent(_eglut->native_dpy, _eglut->dnd_source,
+                        False, NoEventMask, &reply);
+                    XFlush(_eglut->native_dpy);
+                }
+            }
             break;
         }
         case SelectionRequest:
@@ -516,6 +644,81 @@ next_event(struct eglut_window *win)
         }
         case SelectionNotify:
         {
+            if (event.xselection.property == _eglut->XdndSelection) {
+                char* data;
+                unsigned long result;
+
+                Atom actualType;
+                int32_t actualFormat;
+                unsigned long bytesAfter;
+
+                XGetWindowProperty(_eglut->native_dpy, 
+                                                event.xselection.requestor, event.xselection.property, 
+                                                0, LONG_MAX, False, event.xselection.target, 
+                                                &actualType, &actualFormat, &result, &bytesAfter, 
+                                                (unsigned char**) &data);
+
+                if (result == 0)
+                    break;
+
+                // Based on glfw's code
+                char* line;
+                const char* prefix = "file://";
+                while ((line = strtok(data, "\r\n")))
+                {
+                    char* path;
+                    data = NULL;
+
+                    if (line[0] == '#')
+                        continue;
+
+                    if (strncmp(line, prefix, strlen(prefix)) == 0)
+                    {
+                        line += strlen(prefix);
+                        while (*line != '/')
+                            line++;
+                    }
+                    path = calloc(strlen(line) + 1, 1);
+
+                    char* file = path;
+                    while (*line)
+                    {
+                        if (line[0] == '%' && line[1] && line[2])
+                        {
+                            const char digits[3] = { line[1], line[2], '\0' };
+                            *path = (char) strtol(digits, NULL, 16);
+                            line += 2;
+                        }
+                        else
+                            *path = *line;
+
+                        path++;
+                        line++;
+                    }
+
+                    if (win->drop_cb)
+                        win->drop_cb(file);
+                }
+
+                if (data)
+                    XFree(data);
+
+                if (_eglut->dnd_version >= 2) {
+                    XEvent reply = { ClientMessage };
+                    reply.xclient.window = _eglut->dnd_source;
+                    reply.xclient.format = 32;
+                    reply.xclient.data.l[0] = (long) _eglut->current->native.u.window;
+                    reply.xclient.data.l[3] = 0;
+                    reply.xclient.message_type = _eglut->XdndFinished;
+                    reply.xclient.data.l[1] = result;
+                    reply.xclient.data.l[2] = _eglut->XdndActionCopy;
+
+                    XSendEvent(_eglut->native_dpy, _eglut->dnd_source, False, NoEventMask, &reply);
+                    XFlush(_eglut->native_dpy);
+                }
+                break;
+            }
+
             Atom utf8_string = XInternAtom(_eglut->native_dpy, "UTF8_STRING", False);
             Atom app_cb_atom = XInternAtom(_eglut->native_dpy, "EGLUT_CLIPBOARD", False);
 
