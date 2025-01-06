@@ -52,6 +52,7 @@ struct eglut_window {
     EGLUTreshapeCB reshape_cb;
     EGLUTdisplayCB display_cb;
     EGLUTkeyboardCB keyboard_cb;
+    EGLUTdropCB drop_cb;
     EGLUTspecialCB special_cb;
     EGLUTpasteCB paste_cb;
     EGLUTmouseCB mouse_cb;
@@ -87,33 +88,39 @@ struct eglut_state {
     struct eglut_window *current;
 
     int redisplay;
+
+    Atom XdndDrop;
+    Atom XdndTypeList;
+    Atom XdndSelection;
+    Atom XdndEnter;
+    Atom XdndPosition;
+    Atom XdndStatus;
+    Atom XdndLeave;
+    Atom XdndFinished;
+    Atom XdndActionCopy;
+    Atom XtextUriList;
+    int64_t dnd_source, dnd_version;
+    int32_t dnd_format;
 };
 
 extern struct eglut_state *_eglut;
 
-void
-        _eglutFatal(char *format, ...);
+void _eglutFatal(char *format, ...);
 
-int
-        _eglutNow(void);
+int _eglutNow(void);
 
-void
-        _eglutNativeInitDisplay(void);
+void _eglutNativeInitDisplay(void);
 
-void
-        _eglutNativeFiniDisplay(void);
+void _eglutNativeFiniDisplay(void);
 
-void
-        _eglutNativeInitWindow(struct eglut_window *win, const char *title,
-                               int x, int y, int w, int h);
+void _eglutNativeInitWindow(struct eglut_window *win, const char *title,
+                            int x, int y, int w, int h);
 
-void
-        _eglutNativeFiniWindow(struct eglut_window *win);
+void _eglutNativeFiniWindow(struct eglut_window *win);
 
-void
-        _eglutNativeEventLoop(void);
+void _eglutNativeEventLoop(void);
 
-void*
-        _eglutReadPNG(const char *filename, unsigned int *width, unsigned int *height);
+void *
+_eglutReadPNG(const char *filename, unsigned int *width, unsigned int *height);
 
 #endif /* _EGLUTINT_H_ */

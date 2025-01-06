@@ -519,6 +519,13 @@ eglutKeyboardFunc(EGLUTkeyboardCB func)
 }
 
 void
+eglutDropFunc(EGLUTdropCB func)
+{
+    struct eglut_window *win = _eglut->current;
+    win->drop_cb = func;
+}
+
+void
 eglutSpecialFunc(EGLUTspecialCB func)
 {
     struct eglut_window *win = _eglut->current;
