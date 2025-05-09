@@ -434,7 +434,7 @@ next_event(struct eglut_window *win)
                 if (r == -1)*/
                     r = sym;
                 if (r >= 0)
-                    win->special_cb(r, type);
+                    win->special_cb(r, type, event.xkey.state);
             }
             if (type != EGLUT_KEY_REPEAT)
                 redraw = 1;

@@ -105,7 +105,7 @@ typedef void (*EGLUTreshapeCB)(int, int);
 typedef void (*EGLUTdisplayCB)(void);
 typedef void (*EGLUTkeyboardCB)(char*, int);
 typedef void (*EGLUTdropCB)(const char*);
-typedef void (*EGLUTspecialCB)(int, int);
+typedef void (*EGLUTspecialCB)(int, int, unsigned int);
 typedef void (*EGLUTpasteCB)(const char*, int);
 typedef void (*EGLUTmouseCB)(int, int);
 typedef void (*EGLUTmouseRawCB)(double, double);
